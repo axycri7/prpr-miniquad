@@ -8,6 +8,7 @@ import android.view.Surface;
 // To workaround this - all native callbakcks lives in QuadNative class
 public class QuadNative {
     // belongs to MainActivity class
+    public native static void initializeContext(Object activity, boolean preferAngle);
     public native static void activityOnCreate(Object activity);
     public native static void activityOnResume();
     public native static void activityOnPause();

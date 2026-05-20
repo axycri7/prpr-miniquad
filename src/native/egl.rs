@@ -211,9 +211,62 @@ pub struct LibEgl {
 
 impl LibEgl {
     pub fn try_load() -> Option<LibEgl> {
-        module::Module::load("libEGL.so")
-            .or_else(|_| module::Module::load("libEGL.so.1"))
-            .map(|module| LibEgl {
+        Self::try_load_with_preference(false)
+    }
+
+    pub fn try_load_with_preference(prefer_angle: bool) -> Option<LibEgl> {
+        let (module, backend) = if prefer_angle {
+            #[cfg(target_os = "android")]
+            unsafe {
+                let msg = std::ffi::CString::new("trying bundled ANGLE").unwrap();
+                crate::native::android::console_info(msg.as_ptr());
+            }
+            if let Ok(module) = module::Module::load("libEGL_angle.so") {
+                (module, "libEGL_angle.so")
+            } else if let Ok(module) = module::Module::load("libEGL.so") {
+                #[cfg(target_os = "android")]
+                unsafe {
+                    let detail = module::Module::last_dl_error().unwrap_or_else(|| "unknown dlopen error".to_string());
+                    let msg = std::ffi::CString::new(format!(
+                        "bundled ANGLE failed, falling back to system EGL: {}",
+                        detail
+                    ))
+                    .unwrap();
+                    crate::native::android::console_warn(msg.as_ptr());
+                }
+                (module, "libEGL.so")
+            } else if let Ok(module) = module::Module::load("libEGL.so.1") {
+                #[cfg(target_os = "android")]
+                unsafe {
+                    let detail = module::Module::last_dl_error().unwrap_or_else(|| "unknown dlopen error".to_string());
+                    let msg = std::ffi::CString::new(format!(
+                        "bundled ANGLE failed, falling back to system EGL: {}",
+                        detail
+                    ))
+                    .unwrap();
+                    crate::native::android::console_warn(msg.as_ptr());
+                }
+                (module, "libEGL.so.1")
+            } else {
+                return None;
+            }
+        } else if let Ok(module) = module::Module::load("libEGL.so") {
+            (module, "libEGL.so")
+        } else if let Ok(module) = module::Module::load("libEGL.so.1") {
+            (module, "libEGL.so.1")
+        } else if let Ok(module) = module::Module::load("libEGL_angle.so") {
+            (module, "libEGL_angle.so")
+        } else {
+            return None;
+        };
+
+        #[cfg(target_os = "android")]
+        unsafe {
+            let msg = std::ffi::CString::new(format!("using EGL backend: {}", backend)).unwrap();
+            crate::native::android::console_info(msg.as_ptr());
+        }
+
+        Some(LibEgl {
                 eglChooseConfig: module.get_symbol("eglChooseConfig").ok(),
                 eglCopyBuffers: module.get_symbol("eglCopyBuffers").ok(),
                 eglCreateContext: module.get_symbol("eglCreateContext").ok(),
@@ -244,7 +297,6 @@ impl LibEgl {
                 eglSwapInterval: module.get_symbol("eglSwapInterval").ok(),
                 module,
             })
-            .ok()
     }
 }
 

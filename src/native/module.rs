@@ -7,7 +7,7 @@ pub enum Error {
 #[cfg(any(target_os = "linux", target_os = "android"))] // contains ohos
 pub mod linux {
     use super::Error;
-    use libc::{dlclose, dlopen, dlsym, RTLD_LAZY, RTLD_LOCAL};
+    use libc::{dlclose, dlerror, dlopen, dlsym, RTLD_LAZY, RTLD_LOCAL};
     use std::{
         ffi::{c_void, CString},
         ptr::NonNull,
@@ -24,6 +24,15 @@ pub mod linux {
                 Err(Error::DlOpenError)
             } else {
                 Ok(Module(unsafe { NonNull::new_unchecked(module) }))
+            }
+        }
+
+        pub fn last_dl_error() -> Option<String> {
+            let err = unsafe { dlerror() };
+            if err.is_null() {
+                None
+            } else {
+                Some(unsafe { std::ffi::CStr::from_ptr(err) }.to_string_lossy().into_owned())
             }
         }
 

@@ -5,7 +5,14 @@ use crate::{
     GraphicsContext,
 };
 
-use std::{cell::RefCell, sync::mpsc, thread};
+use std::{
+    cell::RefCell,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread,
+};
 
 pub use crate::gl::{self, *};
 
@@ -85,6 +92,7 @@ fn send_message(message: Message) {
 
 static mut ACTIVITY: ndk_sys::jobject = std::ptr::null_mut();
 static mut VM: *mut ndk_sys::JavaVM = std::ptr::null_mut();
+static PREFER_ANGLE: AtomicBool = AtomicBool::new(true);
 
 struct AndroidDisplay {
     screen_width: f32,
@@ -424,7 +432,16 @@ where
     MESSAGES_TX.with(move |messages_tx| *messages_tx.borrow_mut() = Some(tx));
 
     thread::spawn(move || {
-        let mut libegl = LibEgl::try_load().expect("Cant load LibEGL");
+        let prefer_angle = PREFER_ANGLE.load(Ordering::Relaxed);
+        let msg = std::ffi::CString::new(format!(
+            "EGL preference: bundled ANGLE {}",
+            if prefer_angle { "enabled" } else { "disabled" }
+        ))
+        .unwrap();
+        unsafe {
+            console_info(msg.as_ptr());
+        }
+        let mut libegl = LibEgl::try_load_with_preference(prefer_angle).expect("Cant load LibEGL");
 
         // skip all the messages until android will be able to actually open a window
         //
@@ -528,13 +545,21 @@ unsafe fn create_native_window(surface: ndk_sys::jobject) -> *mut ndk_sys::ANati
 
 #[no_mangle]
 pub unsafe extern "C" fn Java_quad_1native_QuadNative_initializeContext(
-    env: *mut ndk_sys::JNIEnv,
+    _env: *mut ndk_sys::JNIEnv,
     _: ndk_sys::jobject,
     activity: ndk_sys::jobject,
+    prefer_angle: ndk_sys::jboolean,
 ) {
     let env = attach_jni_env();
     let activity_ref = (**env).NewGlobalRef.unwrap()(env, activity);
     ndk_context::initialize_android_context(std::mem::transmute(VM), activity_ref as _);
+    PREFER_ANGLE.store(prefer_angle != 0, Ordering::Relaxed);
+    let msg = std::ffi::CString::new(format!(
+        "EGL preference initialized from Java: bundled ANGLE {}",
+        if prefer_angle != 0 { "enabled" } else { "disabled" }
+    ))
+    .unwrap();
+    console_info(msg.as_ptr());
 
     let mut env = unsafe { jni::JNIEnv::from_raw(env as *mut jni::sys::JNIEnv).unwrap() };
     let context = unsafe { jni::objects::JObject::from_raw(activity as jni::sys::jobject) };

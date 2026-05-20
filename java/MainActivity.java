@@ -173,6 +173,7 @@ class QuadSurface
 public class MainActivity extends Activity {
     //% MAIN_ACTIVITY_BODY
 
+    private static final boolean PREFER_ANGLE = true;
     private QuadSurface view;
 
     static {
@@ -184,6 +185,8 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        QuadNative.initializeContext(this, PREFER_ANGLE);
 
         view = new QuadSurface(this);
         setContentView(view);
@@ -277,4 +280,3 @@ public class MainActivity extends Activity {
             });
     }
 }
-
